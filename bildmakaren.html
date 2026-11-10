@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Bildmakaren</title>
+<!-- Integritet: sidan får bara hämta sina egna filer. Inga anrop till andra servrar, inga externa skript,
+     typsnitt eller bilder – webbläsaren stoppar allt annat. Foton och bilder finns bara som data: och blob:. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta name="referrer" content="no-referrer" />
+<link rel="manifest" href="bildmakaren.webmanifest" />
+<meta name="theme-color" content="#E3E3E3" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#151A1D" media="(prefers-color-scheme: dark)" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Bildmakaren" />
+<link rel="apple-touch-icon" href="icons/bildmakaren-apple-touch.png" />
+<link rel="icon" href="icons/bildmakaren.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="bildmakaren.css" />
+</head>
+<body>
+<!-- Bildmakaren: en 2D-bild av blisstext, foton och figurer, med Bliss-knappar. Logiken i src/bildmakaren.js,
+     kontakter/ögon/tangentbord i src/bildmakaren-styrning.js. Symbolerna är originalmotorns färdiga ritningar. -->
+<div class="app">
+  <main class="stage" aria-label="Bilden">
+    <svg id="canvas" viewBox="-24 -24 1648 1048" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Bilden"
+      font-family="Atkinson Hyperlegible, Arial, sans-serif">
+      <style>.bfill{fill:currentColor}</style>
+      <rect id="paper" x="0" y="0" width="1600" height="1000" fill="#FFFFFF" />
+      <g id="frames"></g>
+      <g id="items"></g>
+    </svg>
+  </main>
+  <aside class="panel" id="panel" aria-label="Knappar">
+    <div class="grid" id="grid"></div>
+    <div class="bar" id="bar"></div>
+  </aside>
+</div>
+<dialog id="dlg"></dialog>
+<div id="print" aria-hidden="true"></div>
+<div id="live" class="sr" aria-live="polite"></div>
+<input type="file" id="file-img" accept="image/*" hidden />
+<input type="file" id="file-cam" accept="image/*" capture="environment" hidden />
+<input type="file" id="file-proj" accept=".json,application/json" hidden />
+
+<script src="src/vendor/bliss-data.js"></script>
+<script src="src/bildmakaren-start.js"></script>
+<script src="src/vendor/bliss-ritningar.js"></script>
+<script src="src/vendor/bliss-derivations.js"></script>
+<script src="src/glosor.js"></script>
+<script src="src/vendor/bliss-lemma.js"></script>
+<script src="src/vendor/bliss-synonymer.js"></script>
+<script src="src/vendor/bliss-harledda.js"></script>
+<script src="src/glosor-skriv.js"></script>
+<script src="src/bildmakaren.js"></script>
+<script src="src/bildmakaren-styrning.js"></script>
+<script src="src/bildmakaren-pwa.js"></script>
+</body>
+</html>

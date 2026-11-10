@@ -1,0 +1,176 @@
+/* Bildmakaren. Typsnittet Atkinson Hyperlegible (SIL OFL 1.1, fonts/OFL.txt) och färgerna som i glosor.css. */
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/atkinson-hyperlegible-400-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/atkinson-hyperlegible-400-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/atkinson-hyperlegible-700-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:normal;font-weight:700;font-display:swap;src:url(fonts/atkinson-hyperlegible-700-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/atkinson-hyperlegible-400i-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Atkinson Hyperlegible";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/atkinson-hyperlegible-400i-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+:root{
+  --ink:#242723; --dim:#5C5C5C; --panel:#FFFFFF; --bg:#E3E3E3; --rule:#B9B9B9;
+  --accent:#087BA1; --btn:#FEE7C0; --btn-ink:#022134; --scan:#F08A24;
+  --cmd:108px; --gap:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --ink:#ECECEE; --dim:#A3A8AC; --panel:#1E2428; --bg:#151A1D; --rule:#46525B; --accent:#5CB8DB; color-scheme:dark;
+}}
+:root[data-theme="dark"]{--ink:#ECECEE; --dim:#A3A8AC; --panel:#1E2428; --bg:#151A1D; --rule:#46525B; --accent:#5CB8DB; color-scheme:dark}
+body.size-l{--cmd:136px}
+body.size-xl{--cmd:172px; --gap:12px}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:var(--bg)}
+body{font-family:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Bilden till vänster (eller överst), knapparna till höger (eller under). */
+.app{height:100vh;height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) auto;
+  padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));gap:12px}
+.stage{min-width:0;min-height:0;display:flex;align-items:center;justify-content:center}
+#canvas{width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none}
+#paper{filter:drop-shadow(0 2px 6px rgba(0,0,0,.18))}
+#items [data-oid]{cursor:pointer}
+.sel-a{fill:none;stroke:#FFFFFF;stroke-width:11}
+.sel-b{fill:none;stroke:#087BA1;stroke-width:6;stroke-dasharray:16 10}
+
+.panel{display:flex;flex-direction:column;gap:var(--gap);min-height:0;overflow:auto;padding:4px;scrollbar-width:thin}
+.grid{display:grid;grid-template-columns:repeat(3,var(--cmd));gap:var(--gap);align-content:start}
+.bar{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);margin-top:auto}
+
+/* En knapp: Bliss-symbolen stort, BCI:s glosa under (kan döljas i inställningarna). */
+.cmd{position:relative;width:var(--cmd);height:calc(var(--cmd) * 1.04);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:2px;padding:8px 6px 6px;background:var(--panel);color:var(--ink);border:3px solid var(--rule);
+  border-radius:18px;overflow:hidden;touch-action:manipulation}
+.cmd:hover:not(:disabled){border-color:var(--accent)}
+.cmd:active:not(:disabled){transform:scale(.97)}
+.cmd:disabled{opacity:.35;cursor:default}
+.cmd.primary{background:var(--btn);color:var(--btn-ink);border-color:#E4BE7C}
+.cmd[aria-pressed="true"]{border-color:var(--accent);border-width:5px;box-shadow:inset 0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+.cmd.back{background:color-mix(in srgb,var(--panel) 85%,var(--accent))}
+.sym-wrap{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;gap:6px}
+.sym-wrap svg{height:100%;width:auto;max-width:100%;overflow:visible}
+.cap{font-weight:700;font-size:calc(var(--cmd) * .15);line-height:1.1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.no-caps .cap{display:none}
+.cmd.small{width:auto;height:calc(var(--cmd) * .78)}
+.cmd.small .cap{font-size:calc(var(--cmd) * .13)}
+.gear svg{height:62%}
+.swatch{position:absolute;top:0;left:0;right:0;height:18%;border-bottom:2px solid rgba(0,0,0,.25)}
+.cmd:has(.swatch){padding-top:calc(var(--cmd) * .2)}
+
+/* Flytta: knapparna ligger som pilarna de betyder. */
+.page-flytta{grid-template-areas:"back up ." "left . right" ". down ."}
+.page-flytta .back{grid-area:back}.page-flytta .d-up{grid-area:up}.page-flytta .d-left{grid-area:left}
+.page-flytta .d-right{grid-area:right}.page-flytta .d-down{grid-area:down}
+/* Var något nytt ska ligga: samma kors, med mitt i mitten. */
+.page-plats{grid-template-areas:"back up ." "left mid right" ". down ."}
+.page-plats .back{grid-area:back}.page-plats .d-up{grid-area:up}.page-plats .d-left{grid-area:left}
+.page-plats .d-mid{grid-area:mid}.page-plats .d-right{grid-area:right}.page-plats .d-down{grid-area:down}
+
+/* Tangentbord, scanning och ögonstyrning syns tydligt. */
+:focus-visible{outline:5px solid var(--accent);outline-offset:3px}
+.scan-on{outline:8px solid var(--scan) !important;outline-offset:2px;background:#FFF1DE !important;color:#022134 !important}
+.dwelling::after{content:"";position:absolute;left:0;bottom:0;height:10px;width:100%;background:var(--accent);
+  transform-origin:left;transform:scaleX(0);animation:dwell var(--dwell,1200ms) linear forwards}
+@keyframes dwell{to{transform:scaleX(1)}}
+@media (prefers-reduced-motion: reduce){.cmd:active:not(:disabled){transform:none}}
+
+/* Smal eller stående skärm: bilden överst, knapparna under. */
+@media (orientation: portrait), (max-width: 700px){
+  .app{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}
+  .panel{max-height:62vh}
+  .grid{grid-template-columns:repeat(4,minmax(0,var(--cmd)));justify-content:center}
+  .grid .cmd{width:100%;height:auto;aspect-ratio:1/1.04}
+  .cap{font-size:min(calc(var(--cmd) * .16),3.5vw)}
+  .bar{grid-template-columns:repeat(2,minmax(0,calc(var(--cmd) * 1.6)));justify-content:center}
+  .page-flytta,.page-plats{grid-template-columns:repeat(3,minmax(0,var(--cmd)))}
+}
+
+/* Dialogerna */
+dialog{margin:auto;border:0;border-radius:22px;padding:22px;background:var(--panel);color:var(--ink);max-width:min(1000px,96vw);
+  max-height:94vh;width:min(1000px,96vw);box-shadow:0 10px 40px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(10,20,25,.45)}
+dialog.info,dialog.confirm{width:min(560px,94vw)}
+.dlg-actions{display:flex;gap:var(--gap);justify-content:space-between;margin-top:18px;flex-wrap:wrap}
+.info-text{font-size:22px;line-height:1.4}
+
+.w-label{display:block;font-weight:700;font-size:18px;margin-bottom:6px;color:var(--dim)}
+#w-text{width:100%;font:inherit;font-size:30px;line-height:1.3;padding:14px 16px;border:3px solid var(--rule);border-radius:14px;
+  background:var(--panel);color:var(--ink);resize:vertical}
+#w-text:focus{border-color:var(--accent);outline:none}
+.w-out{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;min-height:150px;margin-top:14px;padding:10px;
+  border-radius:14px;background:color-mix(in srgb,var(--bg) 50%,var(--panel))}
+.w-empty{margin:auto;opacity:.3}
+.w-word,.w-opt{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;background:var(--panel);
+  border:3px solid var(--rule);border-radius:14px;color:#1B1B1B;min-width:70px}
+.w-word:disabled{cursor:default;opacity:1;border-color:transparent;background:transparent;color:var(--ink)}
+.w-word.open{border-color:var(--accent)}
+.w-word svg,.w-opt svg{color:var(--ink)}
+.w-txt{font-size:26px;font-weight:700;padding:30px 8px;color:var(--dim)}
+.cap-always{font-weight:700;font-size:17px}
+.more{position:absolute;top:2px;right:6px;font-size:14px;color:var(--accent)}
+.w-opts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.w-opt[aria-pressed="true"]{border-color:var(--accent);border-width:5px}
+
+dialog.camera video{width:100%;max-height:62vh;border-radius:14px;background:#000}
+
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;max-height:62vh;overflow:auto;padding:4px}
+.thumb{border:4px solid var(--rule);border-radius:14px;padding:0;background:#fff;overflow:hidden;aspect-ratio:16/10}
+.thumb img{width:100%;height:100%;object-fit:contain;display:block}
+.thumb.current{border-color:var(--accent)}
+dialog.deleting .thumb{border-color:#B23A3A;border-style:dashed}
+.confirm-pic img{width:100%;border-radius:12px;border:3px solid var(--rule)}
+.confirm-q{display:flex;align-items:center;justify-content:center;gap:10px;font-size:64px;font-weight:700;margin-top:10px}
+.confirm-q svg{height:110px;width:auto}
+
+dialog.settings h2{font-size:26px;margin-bottom:10px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.row>span{font-size:19px;font-weight:700}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{min-height:56px;min-width:72px;padding:8px 14px;font-size:18px;border:3px solid var(--rule);border-radius:12px;background:var(--panel)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700}
+.help{margin-top:14px;font-size:16px;color:var(--dim);line-height:1.45}
+.credits{margin-top:10px;font-size:13px;color:var(--dim)}
+
+#print{display:none}
+@media print{
+  @page{size:landscape;margin:12mm}
+  html,body{height:auto;overflow:visible;background:#fff}
+  .app,dialog{display:none !important}
+  #print{display:block}
+  #print svg{width:100%;height:auto}
+}
+
+/* Integritet i inställningarna */
+dialog.settings h3{font-size:20px;margin-top:18px}
+.privacy{margin:8px 0 12px 1.2em;font-size:17px;line-height:1.5}
+.danger{min-height:56px;padding:8px 18px;font-size:18px;font-weight:700;border:3px solid #B23A3A;border-radius:12px;background:var(--panel);color:#B23A3A}
+.level-help{margin-top:2px;padding-bottom:6px}
+
+/* Bildserie: välj ruta. Knapparna ligger som rutorna i bilden; tillbaka till höger eller under. */
+.page-plats.rutor-2{grid-template-areas:"p1 p2 back"}
+.page-plats.rutor-3{grid-template-areas:"p1 p2 p3" "back . ."}
+.page-plats.rutor-4{grid-template-areas:"p1 p2 back" "p3 p4 ."}
+.page-plats .d-p1{grid-area:p1}.page-plats .d-p2{grid-area:p2}.page-plats .d-p3{grid-area:p3}.page-plats .d-p4{grid-area:p4}
+
+/* Rad för rad: hela raden markeras. */
+.scan-row{outline:6px dashed var(--scan) !important;outline-offset:2px;background:#FFF6EA !important;color:#022134 !important}
+
+/* Mina bilder: datum under varje bild (portfolio); kopiera-läget markeras. */
+.thumb{position:relative}
+.thumb-date{position:absolute;left:0;right:0;bottom:0;padding:3px 6px;font-size:14px;font-weight:700;background:rgba(255,255,255,.88);color:#022134}
+dialog.mode-copy .thumb{border-color:var(--accent);border-style:dashed}
+dialog.mode-del .thumb{border-color:#B23A3A;border-style:dashed}
+
+/* Elever */
+.new-prof input{flex:1;min-width:180px;min-height:56px;font:inherit;font-size:19px;padding:8px 12px;border:3px solid var(--rule);border-radius:12px;background:var(--panel);color:var(--ink)}
+.plain-btn{min-height:56px;padding:8px 16px;font-size:18px;font-weight:700;border:3px solid var(--accent);border-radius:12px;background:var(--panel);color:var(--accent)}
+.small-danger{min-height:48px;font-size:16px}
+
+/* Hög kontrast: svart bakgrund, vita knappar med svart kant, gult för markering. Symbolerna själva är oförändrade. */
+body.hc{--bg:#000000;--panel:#FFFFFF;--ink:#000000;--rule:#000000;--accent:#0047AB;--scan:#FFD400;--dim:#000000}
+body.hc .cmd{border:4px solid #000;background:#fff;color:#000;box-shadow:0 0 0 2px #fff}
+body.hc .cmd.back{background:#fff}
+body.hc .cmd.primary{background:#FFD400;color:#000;border-color:#000}
+body.hc .cmd:disabled{opacity:.25}
+body.hc :focus-visible{outline:6px solid #FFD400;outline-offset:3px}
+body.hc .scan-on{outline-color:#FFD400 !important;background:#FFD400 !important;color:#000 !important}
+body.hc dialog{border:4px solid #000}
