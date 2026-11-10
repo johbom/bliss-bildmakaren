@@ -124,6 +124,64 @@ function piece(key) {
   return p;
 }
 
+/**
+ * Egna sammansatta ord ("tjock+skalle"), enligt Fundamental Rules:
+ *  - 4.3.5: tecknen i ett ord står med 1/4 rutas mellanrum (200 i ritningarnas enheter, där en ruta är 800 –
+ *    samma mellanrum som originalmotorn har i BCI:s sammansatta ord).
+ *  - 6.5.4.5: ett ord som användaren själv skapar inramas av combine-tecknet (BCI-AV 13382) i början och
+ *    slutet, så att det syns att det inte är ett ord ur BCI:s ordförråd.
+ *  - 7.0: grammatiska indikatorer tas bort inne i ett sammansatt ord; sakindikatorn står kvar.
+ * Delarna är originalmotorns färdiga ritningar, oförändrade – bara placerade efter varandra. Finns redan ett
+ * BCI-ord med exakt de delarna används BCI:s ord (utan combine-tecken).
+ */
+const COMBINE = '13382', WORD_GAP = 200;
+// Grammatiska indikatorer (tas bort inne i ordet). Sak- och diminutivindikatorerna bär betydelse och står kvar.
+const GRAMMAR_IND = new Set([8993, 8994, 8995, 8996, 8997, 8998, 8999, 9000, 9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008,
+  9011, 24665, 24667, 24670, 24674, 24675, 24677, 24807, 28043, 28044]);
+let byParts = null;
+/** BCI-ordet som består av exakt de här delarna (id-lista), om det finns. */
+function wordOfParts(ids) {
+  if (!byParts) {
+    byParts = new Map();
+    for (const c of deck.values()) {
+      if (c.v.c === 'GRAY' || c.raw.length < 1 || !c.raw.every((x) => typeof x === 'number')) continue;
+      const k = c.raw.join(',');
+      if (!byParts.has(k) && G.hasDrawing(String(c.id))) byParts.set(k, c.id);
+    }
+  }
+  return byParts.get(ids.join(',')) ?? null;
+}
+/** Delens ritning inne i ett sammansatt ord: utan böjning och utan grammatisk indikator (7.0). */
+function compoundBase(o) {
+  const c = deck.get(o.id);
+  if (c && c.raw.length >= 2 && GRAMMAR_IND.has(c.raw[c.raw.length - 1])) {
+    const rest = c.raw.slice(0, -1);
+    if (rest.length === 1 && typeof rest[0] === 'number' && G.hasDrawing(String(rest[0]))) return String(rest[0]);
+    const same = rest.every((x) => typeof x === 'number') ? wordOfParts(rest) : null;
+    if (same != null) return String(same);
+  }
+  return String(o.id);
+}
+/** Ett sammansatt ord ur valda alternativ: { key } för ett BCI-ord, annars { compound: [delarnas nycklar] }. */
+function compoundOf(opts) {
+  const base = opts.map(compoundBase);
+  const bci = wordOfParts(base.map(Number));
+  return bci != null ? { key: String(bci) } : { compound: base };
+}
+/** Ritningen för ett eget sammansatt ord: combine-tecken, delarna, combine-tecken, med 1/4 rutas mellanrum. */
+function compoundPiece(keys) {
+  const all = [COMBINE, ...keys, COMBINE].map(piece);
+  if (all.some((p) => !p)) return null;
+  // frameSVG(…, spaced) har 400 luft på var sida om ritningen: ritningens egen bredd är vb[2] − 800.
+  let cursor = 0, inner = '';
+  for (const p of all) {
+    const bx = p.vb[0] + 400, bw = p.vb[2] - 800;
+    inner += `<g transform="translate(${(cursor - bx).toFixed(1)} 0)">${p.inner}</g>`;
+    cursor += bw + WORD_GAP;
+  }
+  const total = cursor - WORD_GAP;
+  return { vb: [-400, all[0].vb[1], total + 800, all[0].vb[3]], inner };
+}
 /** Storlek (w, h) och innehåll (SVG i 0..w, 0..h) för ett item. */
 function shapeSVG(kind, c) {
   switch (kind) {
@@ -149,8 +207,8 @@ function blissSVG(it) {
   const k = SYM_H / 2120;   // ramens höjd (SENTENCE_FRAME i src/glosor.js: -60..2060)
   let x = 0, out = '', pending = false;
   for (const w of it.words) {
-    if (w.key) {
-      const p = piece(w.key);
+    if (w.key || w.compound) {
+      const p = w.key ? piece(w.key) : compoundPiece(w.compound);
       if (!p) { pending = true; const pw = 160; out += `<text x="${x + pw / 2}" y="${SYM_H * 0.6}" font-size="64" text-anchor="middle" fill="${it.color}">…</text>`; x += pw; continue; }
       const sw = p.vb[2] * k, capW = it.caps ? textW(w.label, CAP) + 30 : 0, pw = Math.max(sw, capW);
       out += `<svg x="${(x + (pw - sw) / 2).toFixed(1)}" y="0" width="${sw.toFixed(1)}" height="${SYM_H}" viewBox="${p.vb.join(' ')}" overflow="visible"`
@@ -348,7 +406,10 @@ function cleanDoc(d) {
     else if (i.type === 'image' && doc.assets[i.aid]) doc.items.push({ ...base, type: 'image', aid: i.aid, w: num(i.w, 1, 4000, 400), h: num(i.h, 1, 4000, 400) });
     else if (i.type === 'bliss' && Array.isArray(i.words)) {
       const words = i.words.map((w) => (w && typeof w.key === 'string' && /^(\d+|f:\d+:\w+)$/.test(w.key)
-        ? { key: w.key, label: String(w.label || '').slice(0, 80) } : { text: String(w?.text || '').slice(0, 80) }));
+        ? { key: w.key, label: String(w.label || '').slice(0, 80) }
+        : w && Array.isArray(w.compound) && w.compound.length >= 2 && w.compound.length <= 8 && w.compound.every((k) => /^\d+$/.test(k))
+          ? { compound: w.compound.map(String), label: String(w.label || '').slice(0, 80) }
+          : { text: String(w?.text || '').slice(0, 80) }));
       doc.items.push({ ...base, type: 'bliss', text: String(i.text || '').slice(0, 2000), words, caps: i.caps !== false, bubble: !!i.bubble,
         picks: Array.isArray(i.picks) ? i.picks.map(String).slice(0, 200) : [] });
     }
@@ -617,7 +678,7 @@ const speech = (() => {
 })();
 /** Det som läses upp för en sak i bilden. */
 function spokenOf(it) {
-  if (it.type === 'bliss') return it.text;
+  if (it.type === 'bliss') return it.text.replace(/\+/g, '');
   if (it.type === 'image') return L('bild', 'picture');
   const c = colorName(it.color);
   return `${cmdLabel(SHAPES[it.kind])}${c ? `, ${c}` : ''}`;
@@ -659,14 +720,41 @@ function closeDialog() {
 dlg().addEventListener('cancel', (e) => { e.preventDefault(); closeDialog(); });
 
 // ---- skriva: svensk text -> blisstext (tolkningen är skrivfältets, src/glosor-skriv.js)
-const ws = { text: '', words: [], picks: new Map(), sel: null, editId: null };
+const ws = { text: '', words: [], group: [], groups: [], picks: new Map(), sel: null, editId: null };
+/**
+ * Texten -> ord (skrivfältets tolkning). "ord+ord" blir en grupp: varje del tolkas för sig (och kan bytas
+ * som vanligt) och sätts ihop till ett ord. group[i] = gruppens nummer för ord i, annars null.
+ */
+function parseWrite(text) {
+  const toks = String(text || '').split(/\s+/).filter(Boolean);
+  const words = [], group = [], groups = [];
+  let buf = [];
+  const push = (list, g) => {
+    const off = words.length;
+    for (const w of list) {
+      if (w.futureFrom != null) w.futureFrom += off;
+      words.push(w); group.push(g);
+    }
+  };
+  const flush = () => { if (buf.length) push(G.writeWords(buf.join(' ')), null); buf = []; };
+  for (const t of toks) {
+    const parts = t.split('+').filter((x) => /[\p{L}\p{N}]/u.test(x));
+    if (!t.includes('+') || parts.length < 2) { buf.push(t.replace(/\+/g, '')); continue; }
+    flush();
+    const g = groups.length;
+    groups.push({ text: parts.map((x) => x.replace(/[^\p{L}\p{N}-]/gu, '')).join('') });
+    for (const part of parts) push(G.writeWords(part), g);
+  }
+  flush();
+  return { words, group, groups };
+}
 function writeDialog(editIt) {
   ws.editId = editIt?.id || null;
   ws.text = editIt?.text || '';
   ws.picks = new Map(); ws.sel = null;
   if (editIt) {
     // Tidigare val står kvar för samma ord på samma plats.
-    G.writeWords(ws.text).forEach((w, i) => { const j = w.options.findIndex((o) => o.key === editIt.picks?.[i]); if (j > 0) ws.picks.set(i, j); });
+    parseWrite(ws.text).words.forEach((w, i) => { const j = w.options.findIndex((o) => o.key === editIt.picks?.[i]); if (j > 0) ws.picks.set(i, j); });
   }
   loadForms(() => { if (dlg().classList.contains('write')) updateWrite(); });
   openDialog('write', `
@@ -682,24 +770,56 @@ function writeDialog(editIt) {
   });
 }
 function chosenWrite() { return G.chosenOptions(ws.words, (i) => ws.picks.get(i)); }
+/** Det sammansatta ordet för grupp g: { key } / { compound } / null (någon del saknar symbol). */
+function groupWord(g, ch) {
+  const opts = ws.words.map((_, i) => i).filter((i) => ws.group[i] === g).map((i) => ch[i]);
+  if (opts.some((o) => !o || o.skip || o.text || o.id == null)) return null;
+  return compoundOf(opts);
+}
+/** Förhandsvisning av ett ord (enkel ritning eller sammansatt) i skrivrutan. */
+function wordPreview(w, unit) {
+  const p = w.key ? piece(w.key) : compoundPiece(w.compound);
+  if (!p) return '<span class="w-txt">…</span>';
+  return `<svg viewBox="${p.vb.join(' ')}" width="${(p.vb[2] * unit / 100).toFixed(0)}" height="${(p.vb[3] * unit / 100).toFixed(0)}"`
+    + ` stroke="currentColor" stroke-width="38" stroke-linecap="round" stroke-linejoin="round" fill="none" aria-hidden="true">${p.inner}</svg>`;
+}
 function updateWrite() {
-  ws.words = G.writeWords(ws.text);
+  Object.assign(ws, parseWrite(ws.text));
   const ch = chosenWrite();
   const out = document.getElementById('w-out'), opts = document.getElementById('w-opts');
   if (!out) return;
   if (!ws.words.length) {
     out.innerHTML = `<p class="w-empty">${symbolOf(CMD.skriva[0], 4)}</p>`;
   } else {
+    const groupEnd = (i) => ws.group[i] != null && ws.group[i + 1] !== ws.group[i];
+    const groupStart = (i) => ws.group[i] != null && ws.group[i - 1] !== ws.group[i];
     out.innerHTML = ws.words.map((w, i) => {
       const o = ch[i];
-      if (o?.skip) return '';
-      const pic = !o || o.text ? `<span class="w-txt">${esc(w.text)}</span>`
-        : G.hasDrawing(o.key) ? plain(G.frameSVG(o.key, 4.2, '', true)) : '<span class="w-txt">…</span>';
-      const many = w.options.length > 1;
-      return `<button type="button" class="w-word${ws.sel === i ? ' open' : ''}" data-act="w-word:${i}" data-scan ${many ? '' : 'disabled'}`
-        + ` aria-label="${esc(w.text)}${many ? ` – ${L('byt', 'change')}` : ''}">${pic}<span class="cap-always">${esc(w.text)}</span>${many ? '<span class="more" aria-hidden="true">▾</span>' : ''}</button>`;
+      let html = '';
+      if (groupStart(i)) html += '<span class="w-compound"><span class="w-parts">';
+      html += wordButton(w, i, o);
+      if (groupEnd(i)) {
+        const g = ws.group[i], gw = groupWord(g, ch), text = ws.groups[g].text;
+        const res = gw ? wordPreview(gw, 4.2) : `<span class="w-txt">${esc(text)}</span>`;
+        const note = !gw ? L('blir text: en del saknar symbol', 'becomes text: a part has no symbol')
+          : gw.key ? L('BCI:s eget ord', 'BCI’s own word') : L('eget ord', 'own word');
+        html += `</span><span class="w-result" aria-label="${esc(text)}, ${esc(note)}">${res}<span class="cap-always">${esc(text)}</span><small class="w-note">${esc(note)}</small></span></span>`;
+      }
+      return html;
     }).join('');
   }
+  renderOptions(ch, opts);
+}
+/** Ett ord i skrivrutan; har det flera tolkningar trycker man på det för att byta. */
+function wordButton(w, i, o) {
+  if (o?.skip) return '';
+  const pic = !o || o.text ? `<span class="w-txt">${esc(w.text)}</span>`
+    : G.hasDrawing(o.key) ? plain(G.frameSVG(o.key, 4.2, '', true)) : '<span class="w-txt">…</span>';
+  const many = w.options.length > 1;
+  return `<button type="button" class="w-word${ws.sel === i ? ' open' : ''}" data-act="w-word:${i}" data-scan ${many ? '' : 'disabled'}`
+    + ` aria-label="${esc(w.text)}${many ? ` – ${L('byt', 'change')}` : ''}">${pic}<span class="cap-always">${esc(w.text)}</span>${many ? '<span class="more" aria-hidden="true">▾</span>' : ''}</button>`;
+}
+function renderOptions(ch, opts) {
   if (ws.sel != null && ws.words[ws.sel]) {
     const w = ws.words[ws.sel], cur = ch[ws.sel];
     opts.innerHTML = w.options.map((o, j) => {
@@ -716,6 +836,14 @@ function finishWrite() {
   const ch = chosenWrite();
   const words = [];
   ws.words.forEach((w, i) => {
+    const g = ws.group[i];
+    if (g != null) {
+      // Ett sammansatt ord läggs in en gång, vid sin sista del.
+      if (ws.group[i + 1] === g) return;
+      const gw = groupWord(g, ch), text = ws.groups[g].text;
+      words.push(gw ? { ...gw, label: text } : { text });
+      return;
+    }
     const o = ch[i];
     if (!o || o.skip) return;
     words.push(o.text || !o.key ? { text: w.text } : { key: o.key, label: w.text });
