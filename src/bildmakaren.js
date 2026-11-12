@@ -678,7 +678,10 @@ const speech = (() => {
 })();
 /** Det som läses upp för en sak i bilden. */
 function spokenOf(it) {
-  if (it.type === 'bliss') return it.text.replace(/\+/g, '');
+  // ord+ord läses som ett ord; ett fristående plustecken som "plus".
+  if (it.type === 'bliss') {
+    return plusSigns(it.text).replace(/(?<=[\p{L}\p{N}])\+(?=[\p{L}\p{N}])/gu, '').replace(/\+/g, ' plus ').replace(/\s+/g, ' ').trim();
+  }
   if (it.type === 'image') return L('bild', 'picture');
   const c = colorName(it.color);
   return `${cmdLabel(SHAPES[it.kind])}${c ? `, ${c}` : ''}`;
@@ -722,27 +725,36 @@ dlg().addEventListener('cancel', (e) => { e.preventDefault(); closeDialog(); });
 // ---- skriva: svensk text -> blisstext (tolkningen är skrivfältets, src/glosor-skriv.js)
 const ws = { text: '', words: [], group: [], groups: [], picks: new Map(), sel: null, editId: null };
 /**
- * Texten -> ord (skrivfältets tolkning). "ord+ord" blir en grupp: varje del tolkas för sig (och kan bytas
- * som vanligt) och sätts ihop till ett ord. group[i] = gruppens nummer för ord i, annars null.
+ * Texten -> ord (skrivfältets tolkning). "ord+ord" (utan mellanslag) blir en grupp: varje del tolkas för sig
+ * (och kan bytas som vanligt) och sätts ihop till ett ord. group[i] = gruppens nummer för ord i, annars null.
+ * Ett plustecken med mellanslag ("tjock + skalle", eller ensamt) sätter inte ihop något: det skrivs som
+ * BCI:s plustecken (12374 och, också, plus) med "+" under.
  */
+const PLUS = 12374;
+const plusSigns = (t) => String(t || '').replace(/[\uFF0B\uFE62\u2795]/g, '+');   // ＋ ﹢ ➕ från andra tangentbord
+const plusWord = (w) => (w.text === '+' && !w.options.length
+  ? { ...w, options: [{ id: PLUS, form: null, key: String(PLUS) }, { text: true, key: 'text' }] } : w);
 function parseWrite(text) {
-  const toks = String(text || '').split(/\s+/).filter(Boolean);
+  const toks = plusSigns(text).split(/\s+/).filter(Boolean);
   const words = [], group = [], groups = [];
   let buf = [];
   const push = (list, g) => {
     const off = words.length;
-    for (const w of list) {
+    for (const w0 of list) {
+      const w = plusWord(w0);
       if (w.futureFrom != null) w.futureFrom += off;
       words.push(w); group.push(g);
     }
   };
   const flush = () => { if (buf.length) push(G.writeWords(buf.join(' ')), null); buf = []; };
   for (const t of toks) {
-    const parts = t.split('+').filter((x) => /[\p{L}\p{N}]/u.test(x));
-    if (!t.includes('+') || parts.length < 2) { buf.push(t.replace(/\+/g, '')); continue; }
+    // Ihop bara när plustecknet står direkt mellan två ord; annars blir plustecknet ett eget ord.
+    const parts = t.split('+');
+    if (parts.length < 2 || !parts.every((x) => /[\p{L}\p{N}]/u.test(x))) { buf.push(...t.split(/(\+)/).filter(Boolean)); continue; }
     flush();
     const g = groups.length;
-    groups.push({ text: parts.map((x) => x.replace(/[^\p{L}\p{N}-]/gu, '')).join('') });
+    // Ett ord: bara första delen behåller stor bokstav ("Tjock+Skalle" -> "Tjockskalle").
+    groups.push({ text: parts.map((x, i) => { const w = x.replace(/[^\p{L}\p{N}-]/gu, ''); return i ? w.toLowerCase() : w; }).join('') });
     for (const part of parts) push(G.writeWords(part), g);
   }
   flush();
@@ -1114,7 +1126,7 @@ function act(a) {
     case 'nara': depth(true); break;
     case 'langtbort': depth(false); break;
     case 'bubbla': edit('bubbla', (it) => { it.bubble = !it.bubble; }); break;
-    case 'saga': speech.say(selItem()?.text); break;
+    case 'saga': if (selItem()) speech.say(spokenOf(selItem())); break;
     case 'berattelse': speech.say(storyText()); break;
     case 'prof': switchProfile(p1); break;
     case 'prof-add': addProfile(); break;
