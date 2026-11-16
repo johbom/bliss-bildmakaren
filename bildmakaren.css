@@ -60,10 +60,22 @@ button{font:inherit;color:inherit;cursor:pointer}
 .page-flytta{grid-template-areas:"back up ." "left . right" ". down ."}
 .page-flytta .back{grid-area:back}.page-flytta .d-up{grid-area:up}.page-flytta .d-left{grid-area:left}
 .page-flytta .d-right{grid-area:right}.page-flytta .d-down{grid-area:down}
-/* Var något nytt ska ligga: samma kors, med mitt i mitten. */
-.page-plats{grid-template-areas:"back up ." "left mid right" ". down ."}
+/* Var något nytt ska ligga: rubriken "plats" överst, platserna som ett kors (mitt i mitten), klar nere till höger. */
+.page-plats{grid-template-areas:"title title title" "back up ." "left mid right" ". down ok"}
+.page-plats .page-title{grid-area:title}
 .page-plats .back{grid-area:back}.page-plats .d-up{grid-area:up}.page-plats .d-left{grid-area:left}
 .page-plats .d-mid{grid-area:mid}.page-plats .d-right{grid-area:right}.page-plats .d-down{grid-area:down}
+.page-plats .d-ok{grid-area:ok}
+.page-title{display:flex;align-items:center;justify-content:center;gap:8px;margin:0;font-size:calc(var(--cmd) * .17);font-weight:700}
+.page-title svg{height:calc(var(--cmd) * .62);width:auto}
+/* Platsknapparna: en liten karta över bilden med platsen markerad, och Bliss-ordet under. */
+.sym-wrap.with-map{flex-direction:column;gap:2px}
+.sym-wrap.with-map .minimap{height:46%;width:auto;max-width:100%;flex:0 0 auto}
+.sym-wrap.with-map svg.sym{height:52%}
+.mm-paper{fill:#FFFFFF;stroke:currentColor;stroke-width:4}
+.mm-frame{fill:none;stroke:currentColor;stroke-width:2;opacity:.45}
+.mm-on{fill:var(--accent)}
+.cmd[aria-pressed="true"] .mm-paper{stroke:var(--accent)}
 
 /* Tangentbord, scanning och ögonstyrning syns tydligt. */
 :focus-visible{outline:5px solid var(--accent);outline-offset:3px}
@@ -145,10 +157,10 @@ dialog.settings h3{font-size:20px;margin-top:18px}
 .danger{min-height:56px;padding:8px 18px;font-size:18px;font-weight:700;border:3px solid #B23A3A;border-radius:12px;background:var(--panel);color:#B23A3A}
 .level-help{margin-top:2px;padding-bottom:6px}
 
-/* Bildserie: välj ruta. Knapparna ligger som rutorna i bilden; tillbaka till höger eller under. */
-.page-plats.rutor-2{grid-template-areas:"p1 p2 back"}
-.page-plats.rutor-3{grid-template-areas:"p1 p2 p3" "back . ."}
-.page-plats.rutor-4{grid-template-areas:"p1 p2 back" "p3 p4 ."}
+/* Bildserie: välj ruta. Mitt (hela bilden) överst, rutorna i samma ordning som i bilden, klar nere till höger. */
+.page-plats.rutor-2{grid-template-areas:"title title title" "back mid ." "p1 p2 ." ". . ok"}
+.page-plats.rutor-3{grid-template-areas:"title title title" "back mid ." "p1 p2 p3" ". . ok"}
+.page-plats.rutor-4{grid-template-areas:"title title title" "back mid ." "p1 p2 ." "p3 p4 ok"}
 .page-plats .d-p1{grid-area:p1}.page-plats .d-p2{grid-area:p2}.page-plats .d-p3{grid-area:p3}.page-plats .d-p4{grid-area:p4}
 
 /* Rad för rad: hela raden markeras. */

@@ -32,6 +32,7 @@ const CMD = {
   ja: [18294, 'ja', 'yes'], mitt: [15464, 'mitt', 'middle'],
   saga: [16728, 'säga', 'say'], berattelse: [17272, 'berättelse', 'story'], nara: [15697, 'nära', 'near'],
   langtbort: [26002, 'långt bort', 'far'], bubbla: [12916, 'bubbla', 'bubble'], rektangel: [16472, 'rektangel', 'rectangle'],
+  plats: [16193, 'plats', 'place'],
 };
 /** Siffrorna 1–4 (BCI:s siffertecken): antal rutor i en bildserie, och vilken ruta något ska ligga i. */
 const DIGITS = [null, [8497, '1', '1'], [8498, '2', '2'], [8499, '3', '3'], [8500, '4', '4']];
@@ -288,10 +289,29 @@ function before(cmd) {
   }
   st.last = { key, t: now };
 }
+const emptyDoc = () => !st.doc.items.length && st.doc.bg === '#FFFFFF' && (st.doc.panels || 1) === 1;
+/**
+ * Ny bild: den nuvarande sparas (den finns kvar under öppna) och en tom bild börjar. Ångra tar tillbaka den
+ * förra bilden, så att ett tryck i onödan inte gör något.
+ */
+async function newPicture() {
+  if (emptyDoc()) return;
+  const prev = st.doc.id;
+  await persist();
+  st.doc = newDoc(); st.sel = null; st.page = 'start'; st.pending = null; st.last = null; st.dirty = false;
+  st.hist = [JSON.stringify({ reopen: prev })];
+  render();
+  say(L('Ny bild. Den förra finns kvar under öppna.', 'New picture. The previous one is kept under open.'));
+}
 function undo() {
   const s = st.hist.pop();
   if (!s) return;
   const o = JSON.parse(s);
+  if (o.reopen) {
+    // Ångra "ny bild": öppna den förra bilden igen (den nya, om något gjorts i den, är redan sparad).
+    persist().then(() => DB.get(o.reopen)).then((d) => { if (d) { openDoc(d, true); say(L('Ångrat', 'Undone')); } }).catch(() => {});
+    return;
+  }
   st.doc.bg = o.bg; st.doc.panels = o.panels || 1; st.doc.items = o.items;
   if (!item(st.sel)) { st.sel = null; st.page = 'start'; }
   st.last = null;
@@ -433,27 +453,37 @@ function openDoc(d, keepId) {
  * Tillbaka ångrar att man valde att lägga till.
  */
 function add(it) {
-  st.pending = it; st.sel = null; st.page = 'plats';
+  st.pending = it; st.spot = 'mitt'; st.sel = null; st.page = 'plats';
   render();
-  say((st.doc.panels || 1) > 1 ? L(`I vilken ruta ska ${nameOf(it)} ligga?`, `Which panel should ${nameOf(it)} go in?`)
-    : L(`Var ska ${nameOf(it)} ligga? Mitt, upp, vänster, höger eller ner.`, `Where should ${nameOf(it)} go? Middle, up, left, right or down.`));
+  say(L(`Var ska ${nameOf(it)} ligga? Mitt är vald. Välj en annan plats eller tryck klar.`,
+    `Where should ${nameOf(it)} go? Middle is chosen. Choose another place or press done.`));
 }
-const SPOTS = { mitt: [W / 2, H / 2], upp: [W / 2, H * 0.25], ner: [W / 2, H * 0.75], vanster: [W * 0.25, H / 2], hoger: [W * 0.75, H / 2] };
-function place(spot) {
-  const it = st.pending;
+const spotName = (spot) => (/^ruta\d$/.test(spot) ? L(`ruta ${spot.slice(4)}`, `panel ${spot.slice(4)}`)
+  : cmdLabel({ mitt: CMD.mitt, upp: CMD.upp, ner: CMD.ner, vanster: CMD.vanster, hoger: CMD.hoger }[spot]));
+/** Var något nytt hamnar på en plats: { x, y, s }. I en ruta görs det mindre om det inte ryms. */
+function spotPos(spot, it) {
   const panel = /^ruta\d$/.test(spot) ? panelRects()[+spot.slice(4) - 1] : null;
-  if (!it || (!SPOTS[spot] && !panel)) return;
-  st.pending = null;
-  before('add');
-  let [x, y] = panel ? [panel.x + panel.w / 2, panel.y + panel.h / 2] : SPOTS[spot];
-  if (panel) {
-    // Saken görs mindre om den inte ryms i rutan.
-    const [w, h] = contentOf(it);
-    it.s = Math.min(it.s || 1, (panel.w * 0.82) / w, (panel.h * 0.82) / h);
-  }
+  let [x, y] = panel ? [panel.x + panel.w / 2, panel.y + panel.h / 2] : SPOTS[spot] || SPOTS.mitt;
+  let s0 = it.s || 1;
+  if (panel) { const [w, h] = contentOf(it); s0 = Math.min(s0, (panel.w * 0.82) / w, (panel.h * 0.82) / h); }
   // Ligger något redan just där hamnar det nya en bit snett nedanför, så att båda syns.
   while (st.doc.items.some((o) => Math.abs(o.x - x) < 12 && Math.abs(o.y - y) < 12)) { x += 36; y += 36; }
-  Object.assign(it, { id: uid(), x: Math.min(W, x), y: Math.min(H, y), s: it.s || 1, r: 0, flip: false });
+  return { x: Math.min(W, x), y: Math.min(H, y), s: s0 };
+}
+function chooseSpot(spot) {
+  if (!st.pending) return;
+  st.spot = spot;
+  render();
+  say(spotName(spot));
+}
+const SPOTS = { mitt: [W / 2, H / 2], upp: [W / 2, H * 0.25], ner: [W / 2, H * 0.75], vanster: [W * 0.25, H / 2], hoger: [W * 0.75, H / 2] };
+function place(spot = st.spot || 'mitt') {
+  const it = st.pending;
+  if (!it) return;
+  const pos = spotPos(spot, it);
+  st.pending = null; st.spot = null;
+  before('add');
+  Object.assign(it, { id: uid(), ...pos, r: 0, flip: false });
   st.doc.items.push(it);
   st.sel = it.id; st.page = 'edit';
   changed();
@@ -563,7 +593,21 @@ function btn(c, act, o = {}) {
   const sw = o.swatch ? `<span class="swatch" style="background:${o.swatch}"></span>` : '';
   return `<button type="button" class="cmd${o.primary ? ' primary' : ''}${o.cls ? ` ${o.cls}` : ''}" data-act="${act}" data-scan`
     + `${o.repeat ? ' data-repeat' : ''}${o.first ? ' data-first' : ''}${o.disabled ? ' disabled' : ''}${o.pressed != null ? ` aria-pressed="${o.pressed}"` : ''}`
-    + ` aria-label="${esc(label)}"><span class="sym-wrap" aria-hidden="true">${symbolOf(c[0], 6)}${sw}</span><span class="cap" aria-hidden="true">${esc(label)}</span></button>`;
+    + ` aria-label="${esc(label)}"><span class="sym-wrap${o.map ? ' with-map' : ''}" aria-hidden="true">${o.map || ''}${symbolOf(c[0], 6)}${sw}</span><span class="cap" aria-hidden="true">${esc(label)}</span></button>`;
+}
+/** En liten bild av bilden där platsen är markerad: en prick, eller den ifyllda rutan i en bildserie. */
+function miniMap(spot) {
+  const k = 0.1, rects = panelRects(), n = rects.length;
+  const frames = n > 1 ? rects.map((r) => `<rect class="mm-frame" x="${r.x * k + 4}" y="${r.y * k + 4}" width="${r.w * k - 8}" height="${r.h * k - 8}" rx="3"/>`).join('') : '';
+  let mark;
+  if (/^ruta\d$/.test(spot)) {
+    const r = rects[+spot.slice(4) - 1];
+    mark = `<rect class="mm-on" x="${r.x * k + 4}" y="${r.y * k + 4}" width="${r.w * k - 8}" height="${r.h * k - 8}" rx="3"/>`;
+  } else {
+    const [x, y] = SPOTS[spot];
+    mark = `<circle class="mm-on" cx="${x * k}" cy="${y * k}" r="16"/>`;
+  }
+  return `<svg class="minimap" viewBox="-4 -4 168 108"><rect class="mm-paper" x="0" y="0" width="160" height="100" rx="6"/>${frames}${mark}</svg>`;
 }
 const back = () => btn(CMD.tillbaka, 'back', { cls: 'back' });
 function colorButtons(current) {
@@ -580,7 +624,7 @@ const SHAPE_LEVEL = { cirkel: 1, kvadrat: 1, triangel: 1, stjarna: 1, hjarta: 1,
 const PAGES = {
   start: () => [
     btn(CMD.skriva, 'skriva'), btn(CMD.bild, 'bild'), btn(CMD.kamera, 'kamera'), btn(CMD.form, 'page:form'),
-    btn(CMD.valja, 'valja', { disabled: !st.doc.items.length }), btn(CMD.fil, 'page:fil'),
+    btn(CMD.valja, 'valja', { disabled: !st.doc.items.length }), btn(CMD.fil, 'page:fil'), btn(CMD.ny, 'ny', { disabled: emptyDoc() }),
     at(2, btn(CMD.klistra, 'klistra')), at(2, btn(CMD.farg, 'page:bg')),
     at(2, speech.can() ? btn(CMD.berattelse, 'berattelse', { disabled: !st.doc.items.length }) : ''),
     at(3, btn(CMD.rektangel, 'page:rutor')),
@@ -614,11 +658,16 @@ const PAGES = {
   lager: () => [back(), btn(CMD.nara, 'nara', { repeat: true }), btn(CMD.langtbort, 'langtbort', { repeat: true }),
     at(3, btn(CMD.framfor, 'layer:1')), at(3, btn(CMD.bakom, 'layer:-1'))],
   // Mitt först, så att den är förvald för tangentbord och kontakter; knapparna ligger där de placerar.
-  plats: () => ((st.doc.panels || 1) > 1
-    ? [...panelRects().map((_, i) => btn(DIGITS[i + 1], `place:ruta${i + 1}`, { first: i === 0, primary: i === 0, cls: `d-p${i + 1}` })), back()]
-    : [btn(CMD.mitt, 'place:mitt', { cls: 'd-mid', primary: true, first: true }), btn(CMD.upp, 'place:upp', { cls: 'd-up' }),
-    btn(CMD.vanster, 'place:vanster', { cls: 'd-left' }), btn(CMD.hoger, 'place:hoger', { cls: 'd-right' }),
-    btn(CMD.ner, 'place:ner', { cls: 'd-down' }), back()]),
+  // Platsvalet: rubriken "plats", klar först (bekräftar – mitt är förvald), platserna som en karta, tillbaka.
+  plats: () => {
+    const spot = (key, c, cls) => btn(c, `spot:${key}`, { cls, map: miniMap(key), pressed: st.spot === key });
+    const spots = (st.doc.panels || 1) > 1
+      ? [spot('mitt', CMD.mitt, 'd-mid'), ...panelRects().map((_, i) => spot(`ruta${i + 1}`, DIGITS[i + 1], `d-p${i + 1}`))]
+      : [spot('mitt', CMD.mitt, 'd-mid'), spot('upp', CMD.upp, 'd-up'), spot('vanster', CMD.vanster, 'd-left'),
+        spot('hoger', CMD.hoger, 'd-right'), spot('ner', CMD.ner, 'd-down')];
+    return [`<h2 class="page-title"><span aria-hidden="true">${symbolOf(CMD.plats[0], 4)}</span><span>${esc(cmdLabel(CMD.plats))}</span></h2>`,
+      btn(CMD.klar, 'place-ok', { primary: true, first: true, cls: 'd-ok' }), ...spots, back()];
+  },
 };
 function renderPanel() {
   const g = grid();
@@ -636,9 +685,18 @@ function renderPanel() {
 }
 const GEAR = '<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
+/** Det som ska läggas in, genomskinligt på den valda platsen, så att man ser var det hamnar. */
+function ghostSVG() {
+  if (st.page !== 'plats' || !st.pending) return '';
+  const it = { ...st.pending, ...spotPos(st.spot || 'mitt', st.pending), r: 0, flip: false };
+  const [w, h] = contentOf(it), m = 18 / it.s;
+  const frame = (c) => `<rect class="${c}" x="${-m}" y="${-m}" width="${w + 2 * m}" height="${h + 2 * m}" rx="${10 / it.s}" vector-effect="non-scaling-stroke"/>`;
+  return `<g class="ghost" pointer-events="none"><g opacity="0.45">${itemSVG(it, false)}</g>`
+    + `<g transform="${transformOf(it, w, h)}">${frame('sel-a')}${frame('sel-b')}</g></g>`;
+}
 function renderCanvas() {
   document.getElementById('frames').innerHTML = framesSVG(st.doc.panels);
-  document.getElementById('items').innerHTML = st.doc.items.map((i) => itemSVG(i, true)).join('') + selSVG();
+  document.getElementById('items').innerHTML = st.doc.items.map((i) => itemSVG(i, true)).join('') + selSVG() + ghostSVG();
   document.getElementById('paper').setAttribute('fill', st.doc.bg);
 }
 function applySettings() {
@@ -996,7 +1054,7 @@ function settingsDialog() {
     <h3>${L('Knappar', 'Buttons')}</h3>
     ${row(L('Nivå', 'Level'), seg('level', [[1, L('1 Enkel', '1 Simple')], [2, L('2 Mer', '2 More')], [3, L('3 Allt', '3 All')]]))}
     <p class="help level-help">${[
-    L('1: skriva, bild, kamera, form, välja, fil – flytta, förstora, förminska, ta bort, säga.', '1: write, picture, camera, shape, choose, file – move, enlarge, reduce, remove, say.'),
+    L('1: skriva, bild, kamera, form, välja, fil, ny – flytta, förstora, förminska, ta bort, säga.', '1: write, picture, camera, shape, choose, file, new – move, enlarge, reduce, remove, say.'),
     L('2: dessutom klistra, bakgrundsfärg, berättelse, linje, pil – kopiera, nära/långt bort, färg, redigera.', '2: also paste, background colour, story, line, arrow – copy, near/far, colour, edit.'),
     L('3: dessutom rutor (bildserie), vrida, spegla, framför/bakom, bubbla, text av/på, dela och importera fil.', '3: also panels (picture series), rotate, mirror, in front/behind, bubble, text on/off, share and import file.'),
   ][(SET.level || 1) - 1]}</p>
@@ -1121,7 +1179,8 @@ function act(a) {
       if (dlg().open) closeDialog();
       else { if (st.page === 'plats') { st.pending = null; say(L('Inget tillagt', 'Nothing added')); } st.page = st.sel ? 'edit' : 'start'; render(); }
       break;
-    case 'place': place(p1); break;
+    case 'spot': chooseSpot(p1); break;
+    case 'place-ok': place(); break;
     case 'panels': before('panels'); st.doc.panels = Math.min(4, Math.max(1, +p1)); changed(); break;
     case 'nara': depth(true); break;
     case 'langtbort': depth(false); break;
@@ -1163,7 +1222,7 @@ function act(a) {
     case 'caps': edit('caps', (it) => { it.caps = !it.caps; }); break;
     case 'kopiera': copySel(); break;
     case 'tabort': removeSel(); break;
-    case 'ny': persist().then(() => { st.doc = newDoc(); st.sel = null; st.page = 'start'; st.hist = []; st.last = null; render(); say(L('Ny bild', 'New picture')); }); break;
+    case 'ny': newPicture(); break;
     case 'oppna': openList(); break;
     case 'pick': pickFromList(+p1); break;
     case 'list-mode': mine.mode = mine.mode === p1 ? null : p1; drawList(); break;
