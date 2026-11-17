@@ -5,7 +5,7 @@
  *  - ögonstyrning (dwell): titta på en knapp en stund så trycks den. Knappar som flyttar, vrider och ändrar
  *    storlek fortsätter så länge man tittar kvar.
  *  - tangentbord: Tab och Enter som vanligt, piltangenter flyttar, + och − storlek, Delete tar bort,
- *    Ctrl/⌘+Z ångrar, Escape går tillbaka.
+ *    Ctrl/⌘+Z ångrar, Ctrl/⌘+A väljer allt, Escape går tillbaka.
  * Allt som kan väljas är <button data-scan data-act> i panelen eller i den öppna dialogen.
  */
 (() => {
@@ -169,6 +169,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); B.undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !B.dialogOpen()) { e.preventDefault(); B.selectAll(); return; }
   if (B.dialogOpen() || e.ctrlKey || e.metaKey || e.altKey) return;
   const arrows = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
   if (B.hasSel() && arrows[e.key]) { e.preventDefault(); B.move(...arrows[e.key]); return; }

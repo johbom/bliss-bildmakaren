@@ -66,6 +66,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .page-plats .back{grid-area:back}.page-plats .d-up{grid-area:up}.page-plats .d-left{grid-area:left}
 .page-plats .d-mid{grid-area:mid}.page-plats .d-right{grid-area:right}.page-plats .d-down{grid-area:down}
 .page-plats .d-ok{grid-area:ok}
+.page-klippa{grid-template-areas:"title title title" "back up whole" "left . right" ". down ."}
+.page-klippa .page-title{grid-area:title}
+.page-klippa .back{grid-area:back}.page-klippa .d-up{grid-area:up}.page-klippa .d-left{grid-area:left}
+.page-klippa .d-right{grid-area:right}.page-klippa .d-down{grid-area:down}.page-klippa .d-whole{grid-area:whole}
 .page-title{display:flex;align-items:center;justify-content:center;gap:8px;margin:0;font-size:calc(var(--cmd) * .17);font-weight:700}
 .page-title svg{height:calc(var(--cmd) * .62);width:auto}
 /* Platsknapparna: en liten karta över bilden med platsen markerad, och Bliss-ordet under. */
@@ -93,7 +97,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   .grid .cmd{width:100%;height:auto;aspect-ratio:1/1.04}
   .cap{font-size:min(calc(var(--cmd) * .16),3.5vw)}
   .bar{grid-template-columns:repeat(2,minmax(0,calc(var(--cmd) * 1.6)));justify-content:center}
-  .page-flytta,.page-plats{grid-template-columns:repeat(3,minmax(0,var(--cmd)))}
+  .page-flytta,.page-plats,.page-klippa{grid-template-columns:repeat(3,minmax(0,var(--cmd)))}
 }
 
 /* Dialogerna */

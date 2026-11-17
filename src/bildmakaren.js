@@ -32,7 +32,7 @@ const CMD = {
   ja: [18294, 'ja', 'yes'], mitt: [15464, 'mitt', 'middle'],
   saga: [16728, 'säga', 'say'], berattelse: [17272, 'berättelse', 'story'], nara: [15697, 'nära', 'near'],
   langtbort: [26002, 'långt bort', 'far'], bubbla: [12916, 'bubbla', 'bubble'], rektangel: [16472, 'rektangel', 'rectangle'],
-  plats: [16193, 'plats', 'place'],
+  plats: [16193, 'plats', 'place'], all: [12360, 'all', 'all'], hel: [12360, 'hel', 'whole'], klippa: [13628, 'klippa', 'cut'],
 };
 /** Siffrorna 1–4 (BCI:s siffertecken): antal rutor i en bildserie, och vilken ruta något ska ligga i. */
 const DIGITS = [null, [8497, '1', '1'], [8498, '2', '2'], [8499, '3', '3'], [8500, '4', '4']];
@@ -88,6 +88,10 @@ const newDoc = () => ({ id: uid(), created: Date.now(), updated: Date.now(), bg:
 const st = { doc: newDoc(), sel: null, page: 'start', hist: [], last: null, dirty: false };
 const item = (id) => st.doc.items.find((i) => i.id === id) || null;
 const selItem = () => item(st.sel);
+/** "All": allt i bilden är valt på en gång (st.sel = ALL) och flyttas, ändrar storlek och vrids som en grupp. */
+const ALL = '*';
+const isAll = () => st.sel === ALL;
+const selItems = () => (isAll() ? st.doc.items : [selItem()].filter(Boolean));
 
 // ---- ritningar för böjda former (dåtid, plural …) laddas när de behövs, som i skrivfältet
 let forms = window.BLISS_FORMER ? 'done' : null;
@@ -240,10 +244,21 @@ function contentOf(it) {
   }
   if (it.type === 'shape') return shapeSVG(it.kind, it.color);
   if (it.type === 'image') {
-    const src = st.doc.assets[it.aid] || '';
-    return [it.w, it.h, `<image href="${esc(src)}" x="0" y="0" width="${it.w}" height="${it.h}" preserveAspectRatio="none"/>`];
+    const src = st.doc.assets[it.aid] || '', img = `<image href="${esc(src)}" x="0" y="0" width="${it.w}" height="${it.h}" preserveAspectRatio="none"/>`;
+    if (!cropped(it)) return [it.w, it.h, img];
+    // Beskuret: bara den del som är kvar syns (det inre svg-elementet klipper bort resten).
+    const [l, t] = it.crop, [cw, ch] = cropSize(it);
+    return [cw, ch, `<svg x="0" y="0" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" viewBox="${(l * it.w).toFixed(1)} ${(t * it.h).toFixed(1)} ${cw.toFixed(1)} ${ch.toFixed(1)}" preserveAspectRatio="none">${img}</svg>`];
   }
   return blissSVG(it);
+}
+/** Beskärning av ett foto: crop = [vänster, uppe, höger, nere], hur stor del av fotot som är bortklippt på varje sida. */
+const cropped = (it) => it.type === 'image' && Array.isArray(it.crop) && it.crop.some((v) => v > 0);
+const cropSize = (it) => { const c = it.crop || [0, 0, 0, 0]; return [it.w * (1 - c[0] - c[2]), it.h * (1 - c[1] - c[3])]; };
+/** En sträcka i sakens egna mått (före skala, spegling och vridning) som sträcka i bilden. */
+function toWorld(it, lx, ly) {
+  const a = it.r * Math.PI / 180, x = (it.flip ? -lx : lx) * it.s, y = ly * it.s;
+  return [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)];
 }
 const transformOf = (it, w, h) => `translate(${it.x.toFixed(1)} ${it.y.toFixed(1)}) rotate(${it.r}) scale(${(it.flip ? -it.s : it.s).toFixed(4)} ${it.s.toFixed(4)}) translate(${(-w / 2).toFixed(1)} ${(-h / 2).toFixed(1)})`;
 function itemSVG(it, live) {
@@ -252,12 +267,41 @@ function itemSVG(it, live) {
   return `<g ${live ? `data-oid="${it.id}" ` : ''}transform="${transformOf(it, w, h)}">${hit}${body}</g>`;
 }
 /** Ramen runt det valda, överst i bilden så att den syns även när saken ligger bakom andra. */
-function selSVG() {
-  const it = selItem();
-  if (!it) return '';
+function selFrame(it) {
   const [w, h] = contentOf(it), m = 18 / it.s;
   const r = (c) => `<rect class="${c}" x="${-m}" y="${-m}" width="${w + 2 * m}" height="${h + 2 * m}" rx="${10 / it.s}" vector-effect="non-scaling-stroke"/>`;
-  return `<g class="sel" transform="${transformOf(it, w, h)}" pointer-events="none">${r('sel-a')}${r('sel-b')}</g>`;
+  return `<g class="sel" data-sel="${it.id}" transform="${transformOf(it, w, h)}" pointer-events="none">${r('sel-a')}${r('sel-b')}</g>`;
+}
+function selSVG() {
+  if (isAll()) {
+    // Allt valt: en ram runt varje sak och en gemensam ram runt alltihop.
+    const b = groupBox(), m = 30;
+    if (!b) return '';
+    const r = (c) => `<rect class="${c}" x="${b.x0 - m}" y="${b.y0 - m}" width="${b.x1 - b.x0 + 2 * m}" height="${b.y1 - b.y0 + 2 * m}" rx="14"/>`;
+    return st.doc.items.map(selFrame).join('') + `<g class="sel-all" pointer-events="none">${r('sel-a')}${r('sel-b')}</g>`;
+  }
+  const it = selItem();
+  return it ? selFrame(it) : '';
+}
+/** Ytan som allt i bilden täcker (med vridning och storlek), för gruppens ram och mittpunkt. */
+function groupBox(items = st.doc.items) {
+  if (!items.length) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const it of items) {
+    const [w, h] = contentOf(it);
+    for (const [cx, cy] of [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]]) {
+      const [dx, dy] = toWorld(it, cx, cy);
+      x0 = Math.min(x0, it.x + dx); x1 = Math.max(x1, it.x + dx); y0 = Math.min(y0, it.y + dy); y1 = Math.max(y1, it.y + dy);
+    }
+  }
+  return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+/** På sidan klippa: hela fotot svagt under det beskurna, så att man ser vad som är bortklippt (och kan få tillbaka). */
+function cropGhostSVG() {
+  const it = selItem();
+  if (st.page !== 'klippa' || !it || !cropped(it)) return '';
+  const [ox, oy] = cropOffset(it, it.crop), [dx, dy] = toWorld(it, ox, oy);
+  return `<g opacity="0.3" pointer-events="none">${itemSVG({ ...it, crop: null, x: it.x - dx, y: it.y - dy }, false)}</g>`;
 }
 /** Rutorna i en bildserie (1–4): två eller tre i bredd, fyra som 2 × 2. */
 function panelRects(n = st.doc.panels || 1) {
@@ -313,7 +357,7 @@ function undo() {
     return;
   }
   st.doc.bg = o.bg; st.doc.panels = o.panels || 1; st.doc.items = o.items;
-  if (!item(st.sel)) { st.sel = null; st.page = 'start'; }
+  if (isAll() ? !st.doc.items.length : !item(st.sel)) { st.sel = null; st.page = 'start'; }
   st.last = null;
   changed();
   say(L('Ångrat', 'Undone'));
@@ -423,7 +467,14 @@ function cleanDoc(d) {
     const base = { id: uid(), x: num(i.x, -W, 2 * W, W / 2), y: num(i.y, -H, 2 * H, H / 2), s: num(i.s, 0.05, 20, 1),
       r: num(i.r, -360, 360, 0), flip: !!i.flip, color: HEX.test(i.color) ? i.color : '#1B1B1B' };
     if (i.type === 'shape' && SHAPES[i.kind]) doc.items.push({ ...base, type: 'shape', kind: i.kind });
-    else if (i.type === 'image' && doc.assets[i.aid]) doc.items.push({ ...base, type: 'image', aid: i.aid, w: num(i.w, 1, 4000, 400), h: num(i.h, 1, 4000, 400) });
+    else if (i.type === 'image' && doc.assets[i.aid]) {
+      const im = { ...base, type: 'image', aid: i.aid, w: num(i.w, 1, 4000, 400), h: num(i.h, 1, 4000, 400) };
+      if (Array.isArray(i.crop) && i.crop.length === 4) {
+        const c = i.crop.map((v) => num(v, 0, CROP_MAX, 0));
+        if (c[0] + c[2] <= CROP_MAX && c[1] + c[3] <= CROP_MAX && c.some((v) => v > 0)) im.crop = c;
+      }
+      doc.items.push(im);
+    }
     else if (i.type === 'bliss' && Array.isArray(i.words)) {
       const words = i.words.map((w) => (w && typeof w.key === 'string' && /^(\d+|f:\d+:\w+)$/.test(w.key)
         ? { key: w.key, label: String(w.label || '').slice(0, 80) }
@@ -521,21 +572,97 @@ async function addImageBlob(blob) {
 
 // ---------------------------------------------------------------- att ändra det valda
 const STEP = () => (SET.step === 'stort' ? 60 : 20);
+/** Ändra det valda: fn körs för varje vald sak (en, eller allt när allt är valt). */
 function edit(cmd, fn) {
-  const it = selItem();
-  if (!it) return;
+  const its = selItems();
+  if (!its.length) return;
   before(cmd);
-  fn(it);
+  its.forEach(fn);
   changed();
 }
+/** Ändra allt som en grupp: fn får alla saker och gruppens ram (mittpunkten är det gruppen vrids och växer kring). */
+function editGroup(cmd, fn) {
+  const its = st.doc.items, b = groupBox(its);
+  if (!b) return;
+  before(cmd);
+  fn(its, b);
+  changed();
+}
+const turn = (r, d) => ((r + d + 540) % 360) - 180;
 function move(dx, dy) {
+  if (isAll()) {
+    // Hela gruppen flyttas lika mycket, men inte längre än att alla sakers mitt stannar i bilden.
+    const its = st.doc.items, lim = (v, lo, hi) => (lo > hi ? 0 : Math.min(hi, Math.max(lo, v)));
+    const xs = its.map((i) => i.x), ys = its.map((i) => i.y);
+    const mx = lim(dx * STEP(), -Math.min(...xs), W - Math.max(...xs)), my = lim(dy * STEP(), -Math.min(...ys), H - Math.max(...ys));
+    editGroup('flytta', () => its.forEach((i) => { i.x += mx; i.y += my; }));
+    return;
+  }
   edit('flytta', (it) => {
     it.x = Math.min(W, Math.max(0, it.x + dx * STEP()));
     it.y = Math.min(H, Math.max(0, it.y + dy * STEP()));
   });
 }
-const resize = (k) => edit(k > 1 ? 'forstora' : 'forminska', (it) => { it.s = Math.min(8, Math.max(0.12, it.s * k)); });
-const rotate = (d) => edit('vrida', (it) => { it.r = ((it.r + d + 540) % 360) - 180; });
+function resize(k) {
+  const cmd = k > 1 ? 'forstora' : 'forminska';
+  if (!isAll()) { edit(cmd, (it) => { it.s = Math.min(8, Math.max(0.12, it.s * k)); }); return; }
+  // Gruppen växer och krymper kring sin mitt; ingen sak blir större eller mindre än en ensam sak kan bli.
+  const ss = st.doc.items.map((i) => i.s);
+  const kk = k > 1 ? Math.min(k, 8 / Math.max(...ss)) : Math.max(k, 0.12 / Math.min(...ss));
+  if (Math.abs(kk - 1) < 1e-3) return;
+  editGroup(cmd, (its, b) => its.forEach((i) => { i.s *= kk; i.x = b.cx + (i.x - b.cx) * kk; i.y = b.cy + (i.y - b.cy) * kk; }));
+}
+function rotate(d) {
+  if (!isAll()) { edit('vrida', (it) => { it.r = turn(it.r, d); }); return; }
+  const a = d * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+  editGroup('vrida', (its, b) => its.forEach((i) => {
+    const x = i.x - b.cx, y = i.y - b.cy;
+    i.x = b.cx + x * cos - y * sin; i.y = b.cy + x * sin + y * cos; i.r = turn(i.r, d);
+  }));
+}
+function mirror() {
+  if (!isAll()) { edit('spegel', (it) => { it.flip = !it.flip; }); return; }
+  // Spegla hela gruppen: platserna speglas kring mitten, och varje sak speglas och vrids åt andra hållet.
+  editGroup('spegel', (its, b) => its.forEach((i) => { i.x = 2 * b.cx - i.x; i.flip = !i.flip; i.r = turn(-i.r, 0); }));
+}
+
+// ---- beskära foton (klippa): varje tryck klipper bort en remsa på den sidan; hel tar tillbaka hela fotot
+const CROP_MAX = 0.9;   // minst en tiondel av fotot är kvar på bredden och höjden
+const SIDES = [[-1, 0], [0, -1], [1, 0], [0, 1]];   // vänster, uppe, höger, nere i fotots egna mått
+/** Var den beskurna delens mitt ligger i förhållande till hela fotots mitt (fotots egna mått). */
+const cropOffset = (it, c) => [(c[0] - c[2]) * it.w / 2, (c[1] - c[3]) * it.h / 2];
+/** Byt beskärning så att det som är kvar ligger still i bilden. */
+function setCrop(it, c) {
+  const old = it.crop || [0, 0, 0, 0], [ox0, oy0] = cropOffset(it, old), [ox1, oy1] = cropOffset(it, c);
+  const [dx, dy] = toWorld(it, ox1 - ox0, oy1 - oy0);
+  it.x += dx; it.y += dy;
+  if (c.some((v) => v > 0)) it.crop = c; else delete it.crop;
+}
+/** Klipp på den sida som just nu syns åt det hållet (fotot kan vara vridet eller speglat). */
+function cropSide(vx, vy) {
+  const it = selItem();
+  if (!it || it.type !== 'image') return;
+  let side = 0, best = -Infinity;
+  SIDES.forEach(([nx, ny], i) => {
+    const [wx, wy] = toWorld(it, nx, ny), dot = wx * vx + wy * vy;
+    if (dot > best) { best = dot; side = i; }
+  });
+  const c = [...(it.crop || [0, 0, 0, 0])], f = SET.step === 'stort' ? 0.1 : 0.04;
+  const v = Math.min(c[side] + f, CROP_MAX - c[(side + 2) % 4]);
+  if (v <= c[side] + 1e-6) { say(L('Det går inte att klippa mer där', 'It cannot be cut more there')); return; }
+  c[side] = v;
+  before(`klippa${side}`);
+  setCrop(it, c);
+  changed();
+}
+function cropWhole() {
+  const it = selItem();
+  if (!it || !cropped(it)) return;
+  before('hel');
+  setCrop(it, [0, 0, 0, 0]);
+  changed();
+  say(L('Hela bilden', 'The whole picture'));
+}
 function layer(d) {
   edit('lager', (it) => {
     const a = st.doc.items, i = a.indexOf(it), j = Math.min(a.length - 1, Math.max(0, i + d));
@@ -563,6 +690,15 @@ function copySel() {
   say(L('Kopierad', 'Copied'));
 }
 function removeSel() {
+  if (isAll()) {
+    if (!st.doc.items.length) return;
+    before('tabort');
+    st.doc.items = [];
+    st.sel = null; st.page = 'start';
+    changed();
+    say(L('Allt borttaget. Ångra tar tillbaka det.', 'Everything removed. Undo brings it back.'));
+    return;
+  }
   const it = selItem();
   if (!it) return;
   before('tabort');
@@ -575,15 +711,17 @@ function removeSel() {
 function selectNext() {
   const a = st.doc.items;
   if (!a.length) return;
-  const i = a.findIndex((x) => x.id === st.sel);
+  const i = isAll() ? -1 : a.findIndex((x) => x.id === st.sel);
   const next = a[i <= 0 ? a.length - 1 : i - 1];
   select(next.id);
 }
 function select(id) {
   st.pending = null;
+  if (id === ALL && !st.doc.items.length) id = null;
   st.sel = id; st.page = id ? 'edit' : 'start';
   render();
-  if (id) say(L(`Vald: ${nameOf(item(id))}`, `Selected: ${nameOf(item(id))}`));
+  if (id === ALL) say(L(`Allt valt: ${st.doc.items.length} saker`, `All selected: ${st.doc.items.length} things`));
+  else if (id) say(L(`Vald: ${nameOf(item(id))}`, `Selected: ${nameOf(item(id))}`));
 }
 
 // ---------------------------------------------------------------- panelen (knapparna)
@@ -625,6 +763,7 @@ const PAGES = {
   start: () => [
     btn(CMD.skriva, 'skriva'), btn(CMD.bild, 'bild'), btn(CMD.kamera, 'kamera'), btn(CMD.form, 'page:form'),
     btn(CMD.valja, 'valja', { disabled: !st.doc.items.length }), btn(CMD.fil, 'page:fil'), btn(CMD.ny, 'ny', { disabled: emptyDoc() }),
+    btn(CMD.all, 'all', { disabled: st.doc.items.length < 2 }),
     at(2, btn(CMD.klistra, 'klistra')), at(2, btn(CMD.farg, 'page:bg')),
     at(2, speech.can() ? btn(CMD.berattelse, 'berattelse', { disabled: !st.doc.items.length }) : ''),
     at(3, btn(CMD.rektangel, 'page:rutor')),
@@ -636,6 +775,13 @@ const PAGES = {
     at(3, btn(CMD.dela, 'dela')), at(3, btn(CMD.importera, 'importera'))],
   // Klar står först (uppe till vänster), som tillbaka på de andra sidorna: där lämnar man sidan.
   edit: () => {
+    // Allt valt: det som går att göra med en grupp, i samma ordning som för en sak.
+    if (isAll()) {
+      return [btn(CMD.klar, 'klar', { primary: true }), btn(CMD.flytta, 'page:flytta'),
+        btn(CMD.forstora, 'forstora', { repeat: true }), btn(CMD.forminska, 'forminska', { repeat: true }), btn(CMD.tabort, 'tabort'),
+        at(2, btn(CMD.valja, 'valja')), at(3, btn(CMD.vrida, 'page:vrida')),
+        st.doc.items.some((i) => i.type !== 'image') ? at(2, btn(CMD.farg, 'page:farg')) : ''];
+    }
     const it = selItem();
     return [
       btn(CMD.klar, 'klar', { primary: true }), btn(CMD.flytta, 'page:flytta'),
@@ -648,6 +794,7 @@ const PAGES = {
       it?.type === 'bliss' ? at(2, btn(CMD.redigera, 'redigera')) : '',
       it?.type === 'bliss' ? at(3, btn(CMD.bubbla, 'bubbla', { pressed: !!it.bubble })) : '',
       it?.type === 'bliss' ? at(3, btn(CMD.text, 'caps', { pressed: !!it.caps })) : '',
+      it?.type === 'image' ? btn(CMD.klippa, 'page:klippa') : '',
     ];
   },
   flytta: () => [back(), btn(CMD.upp, 'move:0:-1', { repeat: true, cls: 'd-up' }), btn(CMD.vanster, 'move:-1:0', { repeat: true, cls: 'd-left' }),
@@ -655,6 +802,11 @@ const PAGES = {
   vrida: () => [back(), btn(CMD.vanster, 'rot:-15', { repeat: true }), btn(CMD.hoger, 'rot:15', { repeat: true }),
     btn(CMD.spegel, 'spegel')],
   farg: () => [back(), colorButtons(selItem()?.color)],
+  // Klippa (foton): rubriken, sidorna där de klipper, och hel som tar tillbaka hela fotot.
+  klippa: () => [`<h2 class="page-title"><span aria-hidden="true">${symbolOf(CMD.klippa[0], 4)}</span><span>${esc(cmdLabel(CMD.klippa))}</span></h2>`,
+    back(), btn(CMD.upp, 'crop:0:-1', { repeat: true, cls: 'd-up' }), btn(CMD.vanster, 'crop:-1:0', { repeat: true, cls: 'd-left' }),
+    btn(CMD.hoger, 'crop:1:0', { repeat: true, cls: 'd-right' }), btn(CMD.ner, 'crop:0:1', { repeat: true, cls: 'd-down' }),
+    btn(CMD.hel, 'hel', { cls: 'd-whole', disabled: !cropped(selItem() || {}) })],
   lager: () => [back(), btn(CMD.nara, 'nara', { repeat: true }), btn(CMD.langtbort, 'langtbort', { repeat: true }),
     at(3, btn(CMD.framfor, 'layer:1')), at(3, btn(CMD.bakom, 'layer:-1'))],
   // Mitt först, så att den är förvald för tangentbord och kontakter; knapparna ligger där de placerar.
@@ -696,7 +848,7 @@ function ghostSVG() {
 }
 function renderCanvas() {
   document.getElementById('frames').innerHTML = framesSVG(st.doc.panels);
-  document.getElementById('items').innerHTML = st.doc.items.map((i) => itemSVG(i, true)).join('') + selSVG() + ghostSVG();
+  document.getElementById('items').innerHTML = cropGhostSVG() + st.doc.items.map((i) => itemSVG(i, true)).join('') + selSVG() + ghostSVG();
   document.getElementById('paper').setAttribute('fill', st.doc.bg);
 }
 function applySettings() {
@@ -1054,7 +1206,7 @@ function settingsDialog() {
     <h3>${L('Knappar', 'Buttons')}</h3>
     ${row(L('Nivå', 'Level'), seg('level', [[1, L('1 Enkel', '1 Simple')], [2, L('2 Mer', '2 More')], [3, L('3 Allt', '3 All')]]))}
     <p class="help level-help">${[
-    L('1: skriva, bild, kamera, form, välja, fil, ny – flytta, förstora, förminska, ta bort, säga.', '1: write, picture, camera, shape, choose, file, new – move, enlarge, reduce, remove, say.'),
+    L('1: skriva, bild, kamera, form, välja, fil, ny, all (välja allt) – flytta, förstora, förminska, ta bort, säga, klippa (foton).', '1: write, picture, camera, shape, choose, file, new, all (choose everything) – move, enlarge, reduce, remove, say, cut (photos).'),
     L('2: dessutom klistra, bakgrundsfärg, berättelse, linje, pil – kopiera, nära/långt bort, färg, redigera.', '2: also paste, background colour, story, line, arrow – copy, near/far, colour, edit.'),
     L('3: dessutom rutor (bildserie), vrida, spegla, framför/bakom, bubbla, text av/på, dela och importera fil.', '3: also panels (picture series), rotate, mirror, in front/behind, bubble, text on/off, share and import file.'),
   ][(SET.level || 1) - 1]}</p>
@@ -1070,8 +1222,8 @@ function settingsDialog() {
     ${row(L('Håll kontakten nere minst', 'Hold the switch down at least'), seg('hold', [[0, L('Direkt', 'At once')], [300, '0,3 s'], [600, '0,6 s'], [1000, '1 s']]))}
     ${row(L('Steg när man flyttar', 'Step when moving'), seg('step', [['litet', L('Litet', 'Small')], ['stort', L('Stort', 'Large')]]))}
     ${row(L('Dra i bilden med finger eller mus', 'Drag in the picture with finger or mouse'), seg('drag', [[true, L('På', 'On')], [false, L('Av', 'Off')]]))}
-    <p class="help">${L('1 kontakt: knapparna markeras en i taget – tryck (mellanslag eller Enter) när rätt är markerat. 2 kontakter: mellanslag går vidare, Enter väljer. Rad för rad: välj först raden, sedan knappen. Tangentbord: piltangenterna flyttar, + och − ändrar storlek, Delete tar bort, Ctrl+Z ångrar.',
-      '1 switch: the buttons are highlighted one at a time – press (space or Enter) at the right one. 2 switches: space moves on, Enter chooses. Row by row: first choose the row, then the button. Keyboard: arrow keys move, + and − change size, Delete removes, Ctrl+Z undoes.')}</p>
+    <p class="help">${L('1 kontakt: knapparna markeras en i taget – tryck (mellanslag eller Enter) när rätt är markerat. 2 kontakter: mellanslag går vidare, Enter väljer. Rad för rad: välj först raden, sedan knappen. Tangentbord: piltangenterna flyttar, + och − ändrar storlek, Delete tar bort, Ctrl+Z ångrar, Ctrl+A väljer allt.',
+      '1 switch: the buttons are highlighted one at a time – press (space or Enter) at the right one. 2 switches: space moves on, Enter chooses. Row by row: first choose the row, then the button. Keyboard: arrow keys move, + and − change size, Delete removes, Ctrl+Z undoes, Ctrl+A chooses everything.')}</p>
 
     <h3>${L('Tal', 'Speech')}</h3>
     ${speech.can() ? row(L('Läs upp knappen som markeras', 'Read out the highlighted button'), seg('speakButtons', [[false, L('Av', 'Off')], [true, L('På', 'On')]]))
@@ -1207,7 +1359,7 @@ function act(a) {
     case 'shape': addShape(p1); break;
     case 'color': {
       const hex = COLORS[p1][3];
-      if (st.page === 'bg') { before('bg'); st.doc.bg = hex; changed(); } else edit('farg', (it) => { it.color = hex; });
+      if (st.page === 'bg') { before('bg'); st.doc.bg = hex; changed(); } else edit('farg', (it) => { if (it.type !== 'image') it.color = hex; });
       say(cmdLabel(COLORS[p1]));
       break;
     }
@@ -1217,7 +1369,10 @@ function act(a) {
     case 'forminska': resize(1 / 1.2); break;
     case 'move': move(+p1, +p2); break;
     case 'rot': rotate(+p1); break;
-    case 'spegel': edit('spegel', (it) => { it.flip = !it.flip; }); break;
+    case 'spegel': mirror(); break;
+    case 'all': select(ALL); break;
+    case 'crop': cropSide(+p1, +p2); break;
+    case 'hel': cropWhole(); break;
     case 'layer': layer(+p1); break;
     case 'caps': edit('caps', (it) => { it.caps = !it.caps; }); break;
     case 'kopiera': copySel(); break;
@@ -1269,10 +1424,11 @@ svg().addEventListener('pointerdown', (e) => {
   const g = e.target.closest('[data-oid]');
   if (!g) { if (st.sel) select(null); return; }
   const id = g.dataset.oid;
-  if (st.sel !== id) select(id);
+  // När allt är valt drar man hela gruppen, vilken sak man än tar i.
+  if (!isAll() && st.sel !== id) select(id);
   if (!SET.drag) return;
-  const it = item(id), p = toSvg(e);
-  drag = { id, x0: it.x, y0: it.y, px: p.x, py: p.y, moved: false, pid: e.pointerId };
+  const p = toSvg(e), its = selItems();
+  drag = { its, start: its.map((i) => [i.x, i.y]), px: p.x, py: p.y, moved: false, pid: e.pointerId };
   svg().setPointerCapture(e.pointerId);
 });
 svg().addEventListener('pointermove', (e) => {
@@ -1280,9 +1436,17 @@ svg().addEventListener('pointermove', (e) => {
   const p = toSvg(e), dx = p.x - drag.px, dy = p.y - drag.py;
   if (!drag.moved && Math.hypot(dx, dy) < 14) return;   // darrningar och små ryck flyttar inget
   if (!drag.moved) { before('drag'); drag.moved = true; }
-  const it = item(drag.id);
-  it.x = Math.min(W, Math.max(0, drag.x0 + dx)); it.y = Math.min(H, Math.max(0, drag.y0 + dy));
-  const g = svg().querySelector(`[data-oid="${drag.id}"]`), [w, h] = contentOf(it);
+  if (drag.its.length > 1) {
+    // Gruppen: samma förflyttning för alla, så långt att alla sakers mitt stannar i bilden.
+    const xs = drag.start.map((q) => q[0]), ys = drag.start.map((q) => q[1]);
+    const mx = Math.min(W - Math.max(...xs), Math.max(-Math.min(...xs), dx)), my = Math.min(H - Math.max(...ys), Math.max(-Math.min(...ys), dy));
+    drag.its.forEach((it, i) => { it.x = drag.start[i][0] + mx; it.y = drag.start[i][1] + my; });
+    renderCanvas();
+    return;
+  }
+  const it = drag.its[0];
+  it.x = Math.min(W, Math.max(0, drag.start[0][0] + dx)); it.y = Math.min(H, Math.max(0, drag.start[0][1] + dy));
+  const g = svg().querySelector(`[data-oid="${it.id}"]`), [w, h] = contentOf(it);
   g?.setAttribute('transform', transformOf(it, w, h));
   svg().querySelector('.sel')?.setAttribute('transform', transformOf(it, w, h));
 });
@@ -1305,7 +1469,7 @@ async function start() {
 }
 
 window.Bildmakaren = {
-  act, st, SET, saveSet, move, resize, rotate, undo, removeSel, select, selectNext, closeDialog,
+  act, st, SET, saveSet, move, resize, rotate, undo, removeSel, select, selectNext, closeDialog, selectAll: () => select(ALL),
   dialogOpen: () => dlg().open, hasSel: () => !!st.sel, goBack: () => act('back'), onSettings: null,
   speak: (t) => speech.say(t),
 };
